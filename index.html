@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ECS Trainer 3D Viewer</title>
+<meta name="description" content="Interactive, measurable 3D model of the Body Management and Underchassis Electronic Control System learning device for gasoline and diesel engines.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%226%22 fill=%22%23C62828%22/%3E%3Cpath d=%22M32 0v32H0z%22 fill=%22%23F9A825%22/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <div class="logo">ECS</div>
+    <div>
+      <h1>Body Management &amp; Underchassis ECS Learning Device</h1>
+      <p>Gasoline &amp; Diesel board-type simulators &middot; interactive 3D model &middot; units: mm</p>
+    </div>
+  </div>
+  <div class="seg" id="boardSeg" role="tablist" aria-label="Board">
+    <button data-board="A" class="on"><span class="dot" style="background:#C62828"></span>Gasoline</button>
+    <button data-board="B"><span class="dot" style="background:#F9A825"></span>Diesel</button>
+    <button data-board="both">Both</button>
+  </div>
+</header>
+
+<main>
+  <aside class="panel left" id="tools">
+    <section>
+      <h2>Tool</h2>
+      <div class="seg full" id="modeSeg">
+        <button data-mode="select" class="on" title="Click a part to inspect it (S)">Select</button>
+        <button data-mode="measure" title="Click two points to measure (M)">Measure</button>
+      </div>
+      <p class="hint" id="modeHint">Click any part to see its name and size.</p>
+    </section>
+
+    <section id="measureSec">
+      <h2>Measurements <button class="link" id="clearMeas">Clear</button></h2>
+      <label class="chk"><input type="checkbox" id="snap" checked> Snap to corners / vertices</label>
+      <ol id="measList" class="meas"><li class="empty">No measurements yet.</li></ol>
+    </section>
+
+    <section>
+      <h2>Explode <output id="explodeVal">0%</output></h2>
+      <input type="range" id="explode" min="0" max="100" value="0">
+      <div class="row">
+        <button class="btn sm" id="explodeAnim">Animate</button>
+        <button class="btn sm" id="explodeReset">Assemble</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Section cut <label class="chk inline"><input type="checkbox" id="secOn"> on</label></h2>
+      <input type="range" id="section" min="-600" max="460" value="80" disabled>
+      <p class="hint">Cuts the model along its depth (front &rarr; back): <b id="secVal">80</b> mm</p>
+    </section>
+
+    <section>
+      <h2>Display</h2>
+      <label class="chk"><input type="checkbox" id="tLabels" checked> Panel labels</label>
+      <label class="chk"><input type="checkbox" id="tDims" checked> Overall dimensions</label>
+      <label class="chk"><input type="checkbox" id="tEdges" checked> Edges</label>
+      <label class="chk"><input type="checkbox" id="tGrid" checked> Floor grid (50 mm)</label>
+      <label class="chk"><input type="checkbox" id="tXray"> X-ray enclosure</label>
+      <label class="chk"><input type="checkbox" id="tWire"> Wireframe</label>
+      <label class="chk"><input type="checkbox" id="tOrtho"> Orthographic camera</label>
+    </section>
+
+    <section>
+      <h2>Views</h2>
+      <div class="grid3">
+        <button class="btn sm" data-view="iso">Iso</button>
+        <button class="btn sm" data-view="front">Front</button>
+        <button class="btn sm" data-view="right">Right</button>
+        <button class="btn sm" data-view="top">Top</button>
+        <button class="btn sm" data-view="back">Back</button>
+        <button class="btn sm" data-view="left">Left</button>
+      </div>
+      <button class="btn full" id="shot">Save screenshot (PNG)</button>
+    </section>
+  </aside>
+
+  <div id="viewer">
+    <div class="hud" id="hud">X &mdash; &nbsp; Y &mdash; &nbsp; Z &mdash;</div>
+    <div class="help">Drag: rotate &middot; Right-drag: pan &middot; Wheel: zoom &middot; Esc: cancel &middot; M / S: tools</div>
+    <div class="loading" id="loading">Loading model&hellip;</div>
+  </div>
+
+  <aside class="panel right" id="info">
+    <section class="sel" id="selCard">
+      <h2>Selection</h2>
+      <div id="selBody" class="hint">Nothing selected. Use the Select tool, or pick a sensor from the list below.</div>
+    </section>
+    <div class="tabs" role="tablist">
+      <button class="on" data-tab="sensors">Sensors</button>
+      <button data-tab="bom">Parts</button>
+      <button data-tab="files">Downloads</button>
+    </div>
+    <section class="tab on" id="tab-sensors"><ul id="sensorList" class="list"></ul></section>
+    <section class="tab" id="tab-bom"><table id="bomTable" class="tbl"></table></section>
+    <section class="tab" id="tab-files">
+      <ul class="files">
+        <li><b>2D drawing</b> <a href="files/2D_Drawing_Gasoline_Diesel_Board.pdf" target="_blank">PDF</a> <a href="files/2D_Drawing_Gasoline_Diesel_Board.png" target="_blank">PNG</a> <a href="files/2D_Drawing_Gasoline_Diesel_Board.dwg" download>DWG</a></li>
+        <li><b>3D drawing</b> <a href="files/3D_Drawing_Gasoline_Diesel_Board.pdf" target="_blank">PDF</a> <a href="files/3D_Drawing_Gasoline_Diesel_Board.png" target="_blank">PNG</a> <a href="files/3D_Drawing_Gasoline_Diesel_Board.dwg" download>DWG</a></li>
+        <li><b>Exploded view</b> <a href="files/3D_Exploded_View_Gasoline_Diesel_Board.pdf" target="_blank">PDF</a> <a href="files/3D_Exploded_View_Gasoline_Diesel_Board_Board_A.png" target="_blank">PNG A</a> <a href="files/3D_Exploded_View_Gasoline_Diesel_Board_Board_B.png" target="_blank">PNG B</a></li>
+      </ul>
+      <p class="hint">DWG files open in AutoCAD / DWG TrueView. The 3D DWG is a real 3D model: use ZOOM &rarr; Extents and a Shaded visual style.</p>
+    </section>
+  </aside>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>
