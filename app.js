@@ -5,10 +5,9 @@ import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer
 // Model data is in mm. Source axes: X width, Y depth (front = 0, back = +160), Z height.
 // three.js axes: X width, Y height, Z toward viewer (front).  (x, y, z) -> (x, z, -y)
 const CAP = 0.716;
-const EXPLODE = {
-  rear_cover: [0, 0, -300], panel: [0, 0, 320], modules: [0, 0, 560], side: [200, 0, 0], enclosure: [0, 0, 0],
-};
-const BOARD_GAP = 750;
+let EXPLODE = {};            // filled from model.json (three.js axes)
+let SIZE = [1500, 600, 1800]; // width, depth, height (mm)
+let BOARD_GAP = 1900;
 const V = (p) => new THREE.Vector3(p[0], p[2], -p[1]);
 const $ = (s) => document.querySelector(s);
 const fmt = (v) => v.toFixed(1);
@@ -44,7 +43,7 @@ function makeControls(cam) {
   return c;
 }
 
-const grid = new THREE.GridHelper(3000, 60, 0x8f9ba6, 0xcfd6dc);
+const grid = new THREE.GridHelper(6000, 120, 0x8f9ba6, 0xcfd6dc);
 grid.position.y = -0.5;
 scene.add(grid);
 
@@ -74,7 +73,7 @@ let model = null;
 function addBox(pr, parent, ud) {
   const [x, y, z] = pr.p, [dx, dy, dz] = pr.s;
   const g = new THREE.BoxGeometry(dx, dz, dy);
-  const isShell = pr.g === 'rear_cover' || (pr.g === 'enclosure' && pr.n.startsWith('1 - Enclosure /'));
+  const isShell = pr.n.startsWith('3 - Lower cabinet') || pr.n.startsWith('1 - Mobile frame');
   let m;
   if (isShell) {
     m = new THREE.MeshStandardMaterial({ color: pr.c, roughness: 0.55, metalness: 0.15 });
@@ -158,7 +157,7 @@ function buildBoard(key, data) {
   }
   const labels = [];
   for (const pr of data.prims) {
-    const parent = groups[pr.g] || groups.enclosure;
+    const parent = groups[pr.g] || Object.values(groups)[0];
     const ud = { part: pr.n || 'Enclosure', board: key, group: pr.g };
     if (pr.t === 'box') addBox(pr, parent, ud);
     else if (pr.t === 'cyl') addCyl(pr, parent, ud);
@@ -172,9 +171,9 @@ function buildBoard(key, data) {
 
 function arrow(from, to, color) {
   const dir = new THREE.Vector3().subVectors(to, from).normalize();
-  const cone = new THREE.Mesh(new THREE.ConeGeometry(3.2, 14, 12), new THREE.MeshBasicMaterial({ color }));
+  const cone = new THREE.Mesh(new THREE.ConeGeometry(9, 38, 12), new THREE.MeshBasicMaterial({ color }));
   cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
-  cone.position.copy(to).addScaledVector(dir, -7);
+  cone.position.copy(to).addScaledVector(dir, -19);
   return cone;
 }
 function dimLine(a, b, extA, extB, text, color = 0xb71c1c) {
@@ -194,9 +193,11 @@ function dimLine(a, b, extA, extB, text, color = 0xb71c1c) {
 function buildDims() {
   const g = new THREE.Group();
   const v = (x, y, z) => new THREE.Vector3(x, y, z);
-  g.add(dimLine(v(0, 0, 70), v(450, 0, 70), [v(0, 0, 5), v(0, 0, 80)], [v(450, 0, 5), v(450, 0, 80)], '450 mm'));
-  g.add(dimLine(v(-70, 0, 0), v(-70, 650, 0), [v(-5, 0, 0), v(-80, 0, 0)], [v(-5, 650, 0), v(-80, 650, 0)], '650 mm'));
-  g.add(dimLine(v(530, 0, 0), v(530, 0, -160), [v(455, 0, 0), v(540, 0, 0)], [v(455, 0, -160), v(540, 0, -160)], '160 mm'));
+  const [w, d, h] = SIZE, o = 160;
+  g.add(dimLine(v(0, 0, o), v(w, 0, o), [v(0, 0, 10), v(0, 0, o + 20)], [v(w, 0, 10), v(w, 0, o + 20)], `${w} mm`));
+  g.add(dimLine(v(-o, 0, 0), v(-o, h, 0), [v(-10, 0, 0), v(-o - 20, 0, 0)], [v(-10, h, 0), v(-o - 20, h, 0)], `${h} mm`));
+  g.add(dimLine(v(w + o, 0, 0), v(w + o, 0, -d), [v(w + 10, 0, 0), v(w + o + 20, 0, 0)], [v(w + 10, 0, -d), v(w + o + 20, 0, -d)], `${d} mm`));
+  g.add(dimLine(v(w + o, 0, -d), v(w + o, 650, -d), [v(w + 10, 650, -d), v(w + o + 20, 650, -d)], [v(w + 10, 0, -d), v(w + 10, 0, -d)], '650 mm (worktop)'));
   return g;
 }
 
@@ -218,7 +219,7 @@ function setExplode(f) {
   state.explode = f;
   for (const b of Object.values(boards)) {
     for (const [g, vec] of Object.entries(EXPLODE)) b.groups[g].position.set(vec[0] * f, vec[1] * f, vec[2] * f);
-    b.dims.visible = $('#tDims').checked && f < 0.02;
+    b.dims.visible = $('#tDims').checked && f < 0.02 && b.group.visible;
     b.dims.traverse((o) => { if (o.isCSS2DObject) o.visible = b.dims.visible && b.group.visible; });
   }
   $('#explode').value = Math.round(f * 100);
@@ -298,7 +299,7 @@ new ResizeObserver(resize).observe(viewer);
 // ---------------------------------------------------------------- picking
 const ray = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
-const clipPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 80);
+const clipPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), -300);
 
 function pick(ev) {
   const r = renderer.domElement.getBoundingClientRect();
@@ -336,7 +337,7 @@ function snapPoint(hit, ev) {
 }
 // world -> board-local coordinates (mm): X from left edge, Y up from base, Z depth from front face
 function local(p) {
-  const bx = state.board === 'both' && p.x > BOARD_GAP - 100 ? BOARD_GAP : 0;
+  const bx = state.board === 'both' && p.x > BOARD_GAP - 200 ? BOARD_GAP : 0;
   return { x: p.x - bx, y: p.y, z: -p.z };
 }
 
@@ -388,7 +389,7 @@ function select(board, part, focus = false) {
     const c = box.getCenter(new THREE.Vector3());
     const dir = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
     if (dir.z < 0.3) dir.set(0.35, 0.25, 1).normalize();
-    const dist = Math.max(260, s.length() * 3);
+    const dist = Math.max(450, s.length() * 3);
     controls.target.copy(c);
     persp.position.copy(c).addScaledVector(dir, dist);
     if (camera === ortho) syncOrtho(dist * 0.32);
@@ -399,7 +400,7 @@ function select(board, part, focus = false) {
 
 // ---------------------------------------------------------------- measuring
 const measures = [];
-const markerGeo = new THREE.SphereGeometry(3.2, 16, 12);
+const markerGeo = new THREE.SphereGeometry(6, 16, 12);
 const markerMat = new THREE.MeshBasicMaterial({ color: 0xffb703, depthTest: false });
 const cursor = new THREE.Mesh(markerGeo, new THREE.MeshBasicMaterial({ color: 0x2f81f7, depthTest: false, transparent: true, opacity: 0.9 }));
 cursor.renderOrder = 10;
@@ -628,6 +629,9 @@ function loop() {
 
 fetch('model.json').then((r) => r.json()).then((data) => {
   model = data;
+  SIZE = data.size;
+  BOARD_GAP = SIZE[0] + 400;
+  for (const [g, p] of Object.entries(data.explode)) EXPLODE[g] = [p[0], p[2], -p[1]];
   for (const [k, b] of Object.entries(data.boards)) buildBoard(k, b);
   layoutBoards();
   renderBom();
